@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -145,6 +146,31 @@ func TestHandleHelloHeaderNoHeader(t *testing.T) {
 	}
 	
 	expectedMessage := []byte("invalid username provided\n")
+	if !bytes.Equal(expectedMessage, w.Body.Bytes()) {
+		t.Errorf("bad return, got %v, expected %v", w.Body.String(), string(expectedMessage))
+	}
+}
+
+func TestHandleJSON(t *testing.T) {
+	testRequest := UserData{Name: "Test Man",}
+
+	marshalledRequestBody, err := json.Marshal(testRequest)
+	if err != nil {
+		t.Fatalf("error marshalling test data: %v", err)
+	}
+	
+	req := httptest.NewRequest(http.MethodPost, "/json", bytes.NewBuffer(marshalledRequestBody))
+
+	w := httptest.NewRecorder()
+
+	handleJSON(w, req)
+
+	desiredCode := http.StatusOK
+	if w.Code != desiredCode {
+		t.Errorf("bad response code, expected %v, but got %v\nbody: %v", desiredCode, w.Code, w.Body.String())
+	}
+	
+	expectedMessage := []byte("Hello, Test Man!\n")
 	if !bytes.Equal(expectedMessage, w.Body.Bytes()) {
 		t.Errorf("bad return, got %v, expected %v", w.Body.String(), string(expectedMessage))
 	}

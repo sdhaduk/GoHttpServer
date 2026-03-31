@@ -2,10 +2,16 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
 )
+
+type UserData struct {
+	Name string
+}
 
 func buildOutput(w http.ResponseWriter, username string) error {
 	var output bytes.Buffer
@@ -79,6 +85,28 @@ func handleHelloHeader(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleJSON(w http.ResponseWriter, r *http.Request) {
+	byteData, err := io.ReadAll(r.Body)
+	if err != nil {
+		slog.Error("error reading request body", "err", err)
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	var reqData UserData
+	err = json.Unmarshal(byteData, &reqData)
+	if err != nil {
+		slog.Error("error unmarshalling request body", "err", err)
+		http.Error(w, "error parsing request JSON", http.StatusBadRequest)
+		return
+	}
+
+	err = buildOutput(w, reqData.Name)
+	if err != nil {
+		slog.Error("error writing response body", "err", err)
+		return
+	}
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -87,5 +115,6 @@ func main() {
 	mux.HandleFunc("/hello/", handleHelloParameterized)
 	mux.HandleFunc("/responses/{user}/hello/", handleUserResponsesHello)
 	mux.HandleFunc("/user/hello/", handleHelloHeader)
+	mux.HandleFunc("/json", handleJSON)
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
