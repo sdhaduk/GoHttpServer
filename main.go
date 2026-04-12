@@ -7,10 +7,78 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"github.com/sdhaduk/GoHttpServer/internal/users"
 )
 
 type UserData struct {
-	Name string
+	FirstName string
+	LastName  string
+	Email     string
+}
+
+type server struct {
+	userManager *users.Manager
+}
+
+func main() {
+	mux := http.NewServeMux()
+	manager := users.NewManager()
+	s := server {
+		userManager: manager,
+	}
+
+	mux.HandleFunc("/{$}", handleRoot)
+	mux.HandleFunc("/goodbye", handleGoodbye)
+	mux.HandleFunc("/hello/", handleHelloParameterized)
+	mux.HandleFunc("/responses/{user}/hello/", handleUserResponsesHello)
+	mux.HandleFunc("/user/hello/", handleHelloHeader)
+	mux.HandleFunc("POST /json", handleJSON)
+	mux.HandleFunc("POST /add-user", s.addUser)
+
+
+
+	log.Fatal(http.ListenAndServe(":8080", mux))
+}
+
+
+
+func (s *server) addUser(w http.ResponseWriter, r *http.Request) {
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "unsupported content type header", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	requestBody := http.MaxBytesReader(w, r.Body, 1048576)
+
+	decoder := json.NewDecoder(requestBody)
+	decoder.DisallowUnknownFields()
+
+	var u UserData
+	err := decoder.Decode(&u)
+	if err != nil {
+		slog.Error("error decoding addUsers")
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+
+	err = s.userManager.AddUser(u.FirstName, u.LastName, u.Email)
+	if err != nil {
+		http.Error(w, "error adding user", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated) 
+}
+
+func convertUserToUserData(user *users.User) *UserData {
+	converted := UserData{
+		FirstName: user.FirstName,
+		LastName: user.LastName,
+		Email: user.Email.Address,
+	}
+
+	return &converted
 }
 
 func buildOutput(w http.ResponseWriter, username string) error {
@@ -62,7 +130,7 @@ func handleHelloParameterized(w http.ResponseWriter, r *http.Request) {
 
 func handleUserResponsesHello(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("user")
-	
+
 	err := buildOutput(w, username)
 	if err != nil {
 		slog.Error("error writing response body", "err", err)
@@ -77,7 +145,7 @@ func handleHelloHeader(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid username provided", http.StatusBadRequest)
 		return
 	}
-	
+
 	err := buildOutput(w, username)
 	if err != nil {
 		slog.Error("error writing response body", "err", err)
@@ -100,21 +168,14 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = buildOutput(w, reqData.Name)
+	if reqData.FirstName == "" {
+		http.Error(w, "invalid username provided", http.StatusBadRequest)
+		return	
+	}
+
+	err = buildOutput(w, reqData.FirstName)
 	if err != nil {
 		slog.Error("error writing response body", "err", err)
 		return
 	}
-}
-
-func main() {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/{$}", handleRoot)
-	mux.HandleFunc("/goodbye", handleGoodbye)
-	mux.HandleFunc("/hello/", handleHelloParameterized)
-	mux.HandleFunc("/responses/{user}/hello/", handleUserResponsesHello)
-	mux.HandleFunc("/user/hello/", handleHelloHeader)
-	mux.HandleFunc("/json", handleJSON)
-	log.Fatal(http.ListenAndServe(":8080", mux))
 }

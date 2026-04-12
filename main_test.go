@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
+	"reflect"
 	"testing"
+
+	"github.com/sdhaduk/GoHttpServer/internal/users"
 )
 
 func TestHandleRoot(t *testing.T) {
@@ -152,7 +156,7 @@ func TestHandleHelloHeaderNoHeader(t *testing.T) {
 }
 
 func TestHandleJSON(t *testing.T) {
-	testRequest := UserData{Name: "Test Man",}
+	testRequest := UserData{FirstName: "Test Man",}
 
 	marshalledRequestBody, err := json.Marshal(testRequest)
 	if err != nil {
@@ -175,3 +179,74 @@ func TestHandleJSON(t *testing.T) {
 		t.Errorf("bad return, got %v, expected %v", w.Body.String(), string(expectedMessage))
 	}
 }
+
+func TestAddUser(t *testing.T) {
+	testUser := UserData{
+		FirstName: "Test",
+		LastName: "User",
+		Email: "TestMan@example.com",
+	}
+
+	marshalledRequestBody, err := json.Marshal(testUser)
+	if err != nil {
+		t.Fatalf("error marshalling test data")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/add-user", bytes.NewBuffer(marshalledRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	testManager := users.NewManager()
+	testServer := server{
+		userManager: testManager,
+	}
+
+	testServer.addUser(w, req)
+
+	desiredCode := http.StatusCreated
+
+	if w.Code != desiredCode {
+		t.Errorf("bad response code, expected: %v but got: %v\nbody: %s\n", desiredCode, w.Code, w.Body.String())
+	}  
+
+	resultUser, err := testManager.GetUserByName(testUser.FirstName, testUser.LastName)
+	if err != nil {
+		t.Fatalf("error retreiving user from manager\n%v", err)
+	}
+
+	convertedUser := convertUserToUserData(resultUser)
+
+	if !reflect.DeepEqual(convertedUser, &testUser) {
+		t.Errorf("convertedUser does not match the testUser")
+	}
+}
+
+func TestConvertUserToUserData(t *testing.T) {
+	testFirstName := "Test"
+	testLastName := "User"
+	testEmail, err := mail.ParseAddress("testUser@example.com")
+
+	if err != nil {
+		t.Fatalf("error parsing email")
+	}
+
+	testUser := users.User{
+		FirstName: testFirstName,
+		LastName: testLastName,
+		Email: *testEmail,
+	}
+
+	result := convertUserToUserData(&testUser)
+	
+	expectedUser := &UserData{
+		FirstName: testFirstName,
+		LastName: testLastName,
+		Email:   testEmail.Address,
+	}
+
+	if !reflect.DeepEqual(expectedUser, result) {
+		t.Errorf("the expectedUser and result do not match")
+	}
+}
+
